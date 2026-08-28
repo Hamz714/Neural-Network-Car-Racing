@@ -2,9 +2,11 @@ import random,math
 from copy import deepcopy
 
 class Layer:
-    def __init__(self,columns,rows):
-        self.weights = random_matrix(rows,columns)
-        self.bias = random_matrix(rows,1)
+    """One fully connected layer: weights, biases, and a tanh activation."""
+
+    def __init__(self,columns,rows,rng=None):
+        self.weights = random_matrix(rows,columns,rng)
+        self.bias = random_matrix(rows,1,rng)
 
     def forward(self,input):
         return add_matrices(dot_product(self.weights,input),self.bias)
@@ -20,30 +22,55 @@ class Layer:
                     input[row][column] = self.tanh(input[row][column])
         return input
 
-    def mutate(self):
-        self.weights = multiply(self.weights)
-        self.bias = multiply(self.bias)
+    def mutate(self,sigma=None,rng=None):
+        self.weights = multiply(self.weights,sigma,rng)
+        self.bias = multiply(self.bias,sigma,rng)
 
     def tanh(self,input):
         return (math.exp(input) - math.exp(-input)) / (math.exp(input) + math.exp(-input))
 
 class Network:
-    def __init__(self):
-        self.layers = [Layer(6,12),Layer(12,10),Layer(10,8),Layer(8,2)]
+    """A 6-12-10-8-2 feed-forward network: 320 weights and biases.
 
-    def mutate(self):
+    Inputs are five sensor distances plus the car's velocity; outputs are
+    acceleration and steering, both squashed to [-1,1] by tanh.
+    """
+
+    def __init__(self,rng=None):
+        self.layers = [Layer(6,12,rng),Layer(12,10,rng),Layer(10,8,rng),Layer(8,2,rng)]
+
+    def copy(self):
+        """An independent deep copy, so mutating a child never touches a parent."""
+        return deepcopy(self)
+
+    def mutate(self,sigma=None,rng=None):
+        """Perturb every parameter by sigma * N(0,1), in place."""
         for layer in self.layers:
-            layer.mutate()
+            layer.mutate(sigma,rng)
         return self
 
-def random_normal():
-    input1 = random.random()
-    input2 = random.random()
+def random_normal(rng=None):
+    """A draw from N(0,1) by the Box-Muller transform.
+
+    Passing an rng (any random.Random) keeps a caller's stream independent of
+    the global one, which is what lets training runs be reproducible while the
+    game carries on using the module-level random. Omitting it uses the global
+    stream exactly as before.
+
+    Box-Muller produces two independent normals per pair of uniforms; only the
+    cosine term is kept. Reclaiming the sine would halve the calls but shift
+    every seeded value in the project, so it is deliberately left as is.
+    """
+    source = rng if rng is not None else random
+    input1 = source.random()
+    while input1 == 0.0:  # log(0) would raise; probability ~2^-53 per draw
+        input1 = source.random()
+    input2 = source.random()
     output = math.sqrt(-2 * math.log(input1)) * math.cos(2 * math.pi * input2)
     return output
 
-def random_matrix(rows,columns):
-    matrix = [[random_normal() for i in range(columns)] for j in range(rows)]
+def random_matrix(rows,columns,rng=None):
+    matrix = [[random_normal(rng) for i in range(columns)] for j in range(rows)]
     return matrix
 
 def dot_product(matrix1,matrix2):
@@ -61,10 +88,12 @@ def add_matrices(matrix1,matrix2):
             new_matrix[row][column] = matrix1[row][column] + matrix2[row][column]
     return new_matrix
 
-def multiply(matrix):
+def multiply(matrix,sigma=None,rng=None):
+    """Add sigma * N(0,1) to every element, in place."""
+    step = mutation_rate if sigma is None else sigma
     for row in range(len(matrix)):
         for column in range(len(matrix[0])):
-            matrix[row][column] += mutation_rate * random_normal()
+            matrix[row][column] += step * random_normal(rng)
     return matrix
 
 def forward_propagation(car):
