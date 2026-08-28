@@ -62,7 +62,7 @@ def build_parser():
     env.add_argument("--displacement-window", type=int, default=100)
     env.add_argument("--displacement-min", type=float, default=50.0)
     env.add_argument("--collision-limit", type=int, default=5)
-    env.add_argument("--min-gates-per-lap", type=int, default=8,
+    env.add_argument("--min-gates-per-lap", type=int, default=10,
                      help="a lap only counts once this many checkpoints are cleared")
     env.add_argument("--start-positions", default="0,1",
                      help="comma-separated spawn indices; scores are averaged")

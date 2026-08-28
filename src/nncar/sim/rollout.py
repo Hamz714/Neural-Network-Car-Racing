@@ -34,7 +34,7 @@ class RolloutConfig:
 
     def __init__(self, fps=50, laps=1, max_ticks=3000, stall_ticks=400,
                  collision_limit=5, displacement_window=100, displacement_min=50.0,
-                 min_gates_per_lap=8, exploration_noise=0.0, normalise_inputs=True,
+                 min_gates_per_lap=10, exploration_noise=0.0, normalise_inputs=True,
                  difficulty_image="red.png"):
         self.fps = fps
         self.laps = laps
@@ -60,17 +60,21 @@ class RolloutResult:
     """The outcome of one episode. Small, picklable, and free of pygame objects."""
 
     __slots__ = ("individual_id", "start_index", "seed", "ticks", "total_gates",
-                 "valid_laps", "lap_gates", "lap_ticks", "collisions",
-                 "distance_travelled", "terminated")
+                 "best_circuit_gates", "valid_laps", "lap_gates", "lap_ticks",
+                 "collisions", "distance_travelled", "terminated")
 
     def __init__(self, individual_id=0, start_index=0, seed=0, ticks=0, total_gates=0,
-                 valid_laps=0, lap_gates=(), lap_ticks=(), collisions=0,
-                 distance_travelled=0.0, terminated="timeout"):
+                 best_circuit_gates=0, valid_laps=0, lap_gates=(), lap_ticks=(),
+                 collisions=0, distance_travelled=0.0, terminated="timeout"):
         self.individual_id = individual_id
         self.start_index = start_index
         self.seed = seed
         self.ticks = ticks
+        #: Checkpoints cleared across every circuit attempted. Descriptive only.
         self.total_gates = total_gates
+        #: Checkpoints cleared on the single best circuit. This is what fitness
+        #: scores - see nncar.sim.fitness.
+        self.best_circuit_gates = best_circuit_gates
         self.valid_laps = valid_laps
         self.lap_gates = tuple(lap_gates)
         self.lap_ticks = tuple(lap_ticks)
@@ -90,9 +94,10 @@ class RolloutResult:
             setattr(self, name, value)
 
     def __repr__(self):
-        return ("RolloutResult(gates=%d, laps=%d, ticks=%d, collisions=%d, %s)"
-                % (self.total_gates, self.valid_laps, self.ticks, self.collisions,
-                   self.terminated))
+        return ("RolloutResult(best_circuit=%d, total_gates=%d, laps=%d, ticks=%d, "
+                "collisions=%d, %s)"
+                % (self.best_circuit_gates, self.total_gates, self.valid_laps,
+                   self.ticks, self.collisions, self.terminated))
 
 
 def build_track(cfg):
@@ -146,6 +151,7 @@ def simulate(network, start_index=0, cfg=None, seed=0, individual_id=0, track=No
         collisions = 0
         previous_collisions = 0
         best_gates = 0
+        best_circuit = 0
         last_progress_tick = 0
         distance = 0.0
 
@@ -179,10 +185,21 @@ def simulate(network, start_index=0, cfg=None, seed=0, individual_id=0, track=No
             distance += step
             previous_x, previous_y = car.world_x, car.world_y
 
+            # Progress for the anti-stall rule is cumulative: a car that
+            # crosses the line and starts a fresh circuit has not stalled.
             gates = sum(lap_gates) + car.checkpoints_passed
             if gates > best_gates:
                 best_gates = gates
                 last_progress_tick = tick
+
+            # Progress for scoring is the best single circuit. Summing across
+            # circuits would pay a car more for two sloppy laps than for one
+            # clean one, which is exactly the wrong lesson.
+            circuit = max(lap_gates) if lap_gates else 0
+            if car.checkpoints_passed > circuit:
+                circuit = car.checkpoints_passed
+            if circuit > best_circuit:
+                best_circuit = circuit
 
             valid_laps = sum(1 for count in lap_gates if count >= cfg.min_gates_per_lap)
 
@@ -214,6 +231,7 @@ def simulate(network, start_index=0, cfg=None, seed=0, individual_id=0, track=No
             seed=seed,
             ticks=tick + 1,
             total_gates=sum(lap_gates) + car.checkpoints_passed,
+            best_circuit_gates=best_circuit,
             valid_laps=sum(1 for count in lap_gates if count >= cfg.min_gates_per_lap),
             lap_gates=lap_gates,
             lap_ticks=lap_ticks,

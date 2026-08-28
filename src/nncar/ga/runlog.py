@@ -161,7 +161,8 @@ def summarise(generation, sigma, scores, results, elapsed, cumulative, fps, laps
     """Collapse a generation's rollouts into one CSV row."""
     flat = [result for group in results for result in group]
 
-    gates = [max(r.total_gates for r in group) for group in results]
+    # The scored quantity: the best single circuit, not the sum across circuits.
+    gates = [max(r.best_circuit_gates for r in group) for group in results]
     laps = [max(r.valid_laps for r in group) for group in results]
     collisions = [mean([r.collisions for r in group]) for group in results]
     ticks = sum(r.ticks for r in flat)

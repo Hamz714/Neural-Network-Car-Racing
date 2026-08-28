@@ -11,9 +11,16 @@ from nncar.sim.rollout import RolloutResult
 
 
 def result(**kwargs):
+    """Build a RolloutResult.
+
+    `total_gates` is the sum across circuits and is descriptive only;
+    `best_circuit_gates` is what fitness scores. Tests that set one and mean
+    both get both, unless they are specifically exercising the difference.
+    """
     defaults = dict(ticks=500, total_gates=0, valid_laps=0, lap_gates=(),
                     collisions=0, terminated="stall")
     defaults.update(kwargs)
+    defaults.setdefault("best_circuit_gates", defaults["total_gates"])
     return RolloutResult(**defaults)
 
 
@@ -71,8 +78,8 @@ def test_the_free_lap_exploit_scores_nothing():
     Because progress is counted in checkpoints and each lap records how many it
     cleared, that behaviour is worth exactly zero.
     """
-    exploiter = result(total_gates=0, valid_laps=0, lap_gates=(0, 0, 0, 0, 0),
-                       ticks=200, collisions=0)
+    exploiter = result(total_gates=0, best_circuit_gates=0, valid_laps=0,
+                       lap_gates=(0, 0, 0, 0, 0), ticks=200, collisions=0)
     assert fitness(exploiter) == 0.0
 
     honest = result(total_gates=3, valid_laps=0, lap_gates=(), ticks=800)
@@ -117,3 +124,32 @@ def test_is_a_pure_function_of_the_result():
 
 def test_zero_ticks_does_not_divide_by_zero():
     assert isinstance(fitness(result(ticks=0, total_gates=1)), float)
+
+
+def test_two_sloppy_laps_lose_to_one_clean_one():
+    """The second reward hack, and the reason progress is a single circuit.
+
+    Summing checkpoints across circuits pays a car that clips two corners on
+    each of two laps sixteen, against ten for a car that drives one lap
+    properly - so the search learns to take a scenic route and skip gates. The
+    first trained champion came back with lap_gates of (7, 8) and never once
+    cleared all ten.
+    """
+    sloppy = result(total_gates=15, best_circuit_gates=8, valid_laps=0,
+                    lap_gates=(7, 8), ticks=1600)
+    clean = result(total_gates=10, best_circuit_gates=10, valid_laps=1,
+                   lap_gates=(10,), ticks=900, terminated="finished")
+    assert fitness(clean) > fitness(sloppy)
+
+
+def test_repeating_a_partial_circuit_never_helps():
+    once = result(total_gates=8, best_circuit_gates=8, lap_gates=(8,), ticks=800)
+    twice = result(total_gates=16, best_circuit_gates=8, lap_gates=(8, 8), ticks=1600)
+    # More laps of the same quality must not outscore one - it is only slower.
+    assert fitness(twice) < fitness(once)
+
+
+def test_a_lap_requires_every_checkpoint():
+    from nncar.sim.rollout import RolloutConfig
+
+    assert RolloutConfig().min_gates_per_lap == 10

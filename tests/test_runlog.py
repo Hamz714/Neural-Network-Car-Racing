@@ -49,6 +49,8 @@ def rollout(**kwargs):
     defaults = dict(ticks=500, total_gates=0, valid_laps=0, lap_gates=(),
                     collisions=0, terminated="stall")
     defaults.update(kwargs)
+    # Summaries report the scored quantity - the best single circuit.
+    defaults.setdefault("best_circuit_gates", defaults["total_gates"])
     return RolloutResult(**defaults)
 
 
@@ -117,6 +119,11 @@ class TestSummarise:
         results = [[rollout(total_gates=1), rollout(total_gates=9)]]
         row = runlog.summarise(0, 0.1, [100.0], results, 1.0, 1.0, 50, 1)
         assert row["gates_best"] == 9
+
+    def test_progress_is_the_best_circuit_not_the_sum_across_circuits(self):
+        """Two sloppy laps must not report as more progress than one clean one."""
+        sloppy = [[rollout(total_gates=15, best_circuit_gates=8, lap_gates=(7, 8))]]
+        assert runlog.summarise(0, 0.1, [1.0], sloppy, 1.0, 1.0, 50, 1)["gates_best"] == 8
 
     def test_every_column_is_produced(self):
         row = self.build()
