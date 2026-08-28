@@ -1,6 +1,7 @@
 import pygame,math,time,pickle,random
-import window as w
-from neural_network import forward_propagation,random_normal,Network,number_of_cars
+from nncar import window as w
+from nncar.neural_network import forward_propagation,random_normal,Network,number_of_cars
+from nncar import assets
 
 class Car:
 
@@ -182,6 +183,9 @@ class NPC(Car):
         self.turn = 0
         self.laps = laps
         self.type = "NPC"
+        #: Whether this network expects sensor inputs scaled to [0,1].
+        #: Models predating normalisation are loaded with this False.
+        self.normalise_inputs = False
         self.sensors = [Sensor(self.x+self.width//2,self.y+self.height//2,self.angle-90,500),
                         Sensor(self.x+self.width//2,self.y+self.height//2,self.angle-45,600),
                         Sensor(self.x+self.width//2,self.y+self.height//2,self.angle,700),
@@ -223,8 +227,8 @@ class Track:
     def __init__(self,lap_number):
         self.x = 400
         self.y = -1000
-        self.image = pygame.image.load("track.png")
-        self.border = [pygame.image.load("trackborder1.png"),pygame.image.load("trackborder2.png"),pygame.image.load("trackborder3.png")]
+        self.image = pygame.image.load(assets.image("track.png"))
+        self.border = [pygame.image.load(path) for path in assets.border_paths()]
         self.mask = [pygame.mask.from_surface(self.border[0]),pygame.mask.from_surface(self.border[1]),pygame.mask.from_surface(self.border[2])]
         self.lap_number = lap_number
         self.leaderboard = []
@@ -311,7 +315,7 @@ class Event:
             return False
         
 class Button:
-    cursor_image = pygame.image.load("cursor.png")
+    cursor_image = pygame.image.load(assets.image("cursor.png"))
     cursor_image = pygame.transform.scale(cursor_image,(32,32))
 
     def __init__(self,x,y,width,height,image):
@@ -319,7 +323,7 @@ class Button:
         self.y = y
         self.width = width
         self.height = height
-        self.image = pygame.image.load(image + "button.png")
+        self.image = pygame.image.load(assets.image(image + "button.png"))
         self.image = pygame.transform.scale(self.image,(width,height))
 
     def update(self):
@@ -350,16 +354,19 @@ class Option_Button(Button):
             return self.new_variable
 
 START_TIME = time.time()
-CARS = [(pygame.image.load("red.png"),0),(pygame.image.load("yellow.png"),100),(pygame.image.load("orange.png"),200),(pygame.image.load("lightgrey.png"),300),(pygame.image.load("white.png"),400),(pygame.image.load("darkgrey.png"),500),(pygame.image.load("pink.png"),600),(pygame.image.load("black.png"),700)]
+#: Purchasable car skins, paired with their shop price.
+CAR_SKINS = [("red.png",0),("yellow.png",100),("orange.png",200),("lightgrey.png",300),
+             ("white.png",400),("darkgrey.png",500),("pink.png",600),("black.png",700)]
+CARS = [(pygame.image.load(assets.image(name)),price) for name,price in CAR_SKINS]
 try:
-    file = open("progress.txt","rb")
+    file = open(assets.PROGRESS_FILE,"rb")
     purchased,balance,selected = pickle.load(file)
 except FileNotFoundError:
     purchased = [True,False,False,False,False,False,False,False]
     balance = 250
     selected = 0
 NPC_START_POS = [[610,490],[700,540],[610,320],[610,150],[700,200]]
-pygame.mixer.music.load("rockit.mp3")
+pygame.mixer.music.load(assets.audio("rockit.mp3"))
 pygame.mixer.music.set_volume(0.7)
 pygame.mixer.music.play(-1)
 music_paused = False

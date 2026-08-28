@@ -1,1 +1,24 @@
+# Recorded gameplay, too large for the repo
 NEA Testing.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Player save file - local state, not source
+progress.txt
+
+# Generated: occupancy-grid cache and training run output.
+# results/ IS committed - it holds the published training run.
+cache/
+runs/
+
+# Tooling
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,7 +1,9 @@
 import pygame,math,pickle,sys,random
-import window as w
-import variable as v
-import neural_network as n
+from copy import deepcopy
+from nncar import window as w
+from nncar import entities as v
+from nncar import neural_network as n
+from nncar import assets
 
 def quit():
     if pygame.event.get(pygame.QUIT):
@@ -80,22 +82,44 @@ def finish_race():
 #         networks.append(car.network)
 #     pickle.dump(networks,file)
 
+def load_model(difficulty):
+    """Read a saved model, returning (networks, normalise_inputs).
+
+    Accepts both the versioned dictionary written by the trainer and a bare
+    pickled Network from before the format existed.
+    """
+    with open(assets.model(difficulty + ".pkl"),"rb") as file:
+        payload = pickle.load(file)
+    if isinstance(payload,dict):
+        networks = payload.get("networks") or [payload["network"]]
+        return networks,payload.get("normalise_inputs",True)
+    return [payload],False
+
+
 def load(difficulty):
+    """Build the five opponent cars for a race.
+
+    Each NPC gets its own network. The original code handed the same object to
+    all five, so every opponent shared one brain and differed only by the noise
+    added to its outputs each frame; when fewer champions are available than
+    there are cars, they are cycled and copied so the cars stay independent.
+    """
+    networks,normalise = load_model(difficulty)
     NPC_cars = []
-    file_name = difficulty + ".txt"
-    file = open(file_name,"rb")
-    network = pickle.load(file)
     colours_picked = [v.CARS[v.selected][0]]
     for i in range(5):
         colour = random.choice(v.CARS)[0]
         while colour in colours_picked:
             colour = random.choice(v.CARS)[0]
         colours_picked.append(colour)
-        NPC_cars.append(v.NPC(colour,0,network))
+        network = deepcopy(networks[i % len(networks)])
+        car = v.NPC(colour,0,network)
+        car.normalise_inputs = normalise
+        NPC_cars.append(car)
     return NPC_cars
 
 def update_progress():
-    file = open("progress.txt","wb")
+    file = open(assets.PROGRESS_FILE,"wb")
     pickle.dump([v.purchased,v.balance,v.selected],file)
 
 def calculate_balance(difficulty,lap_number):
