@@ -97,11 +97,52 @@ def multiply(matrix,sigma=None,rng=None):
     return matrix
 
 def forward_propagation(car):
-    output = car.inputs
+    """Run the car's sensor readings through its network.
+
+    Returns (accelerate, turn), both in [-1,1].
+
+    This is the single hottest function in the project - it runs once per car
+    per frame, and a training run evaluates it tens of millions of times - so
+    it is written out flat rather than composed from the matrix helpers above.
+    Layer.forward, activation, dot_product and add_matrices remain as the
+    readable definition of what this computes, and tests/test_forward.py checks
+    the two agree bit for bit on hundreds of random networks.
+
+    Three things make the flat version faster without changing a single bit:
+    the input is known to be a column vector, so the generic matrix code's
+    innermost loop over columns is always a loop over one element; the
+    multiply-accumulate, the bias and the activation happen in one pass instead
+    of three, which avoids building two intermediate matrices per layer; and
+    values move as plain floats rather than as one-element lists.
+
+    The accumulation is a plain `for ... : total += w * v`. Using
+    `sum(map(mul, ...))` measures faster still, but CPython 3.12 gave sum()
+    compensated floating-point summation, so it does not produce identical
+    results - and identical is the point.
+    """
+    values = [row[0] for row in car.inputs]
+
     for layer in car.network.layers:
-        output = layer.forward(output)
-        output = layer.activation(output)
-    return output[0][0],output[1][0]
+        activated = []
+        for weights,bias in zip(layer.weights,layer.bias):
+            total = 0
+            for weight,value in zip(weights,values):
+                total += weight * value
+            total += bias[0]
+
+            # The same saturation clamp as Layer.activation: beyond +/-20 tanh
+            # is 1 to within float precision, and the naive exponential form
+            # would overflow not far past it.
+            if total < -20:
+                activated.append(-1)
+            elif total > 20:
+                activated.append(1)
+            else:
+                activated.append((math.exp(total) - math.exp(-total))
+                                 / (math.exp(total) + math.exp(-total)))
+        values = activated
+
+    return values[0],values[1]
 
 def best_networks(NPC_cars):
     NPC_cars.sort(reverse=True, key=lambda car : car.score)

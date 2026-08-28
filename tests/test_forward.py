@@ -86,3 +86,52 @@ def test_raw_pixel_inputs_saturate_the_first_layer():
 
     assert norm_z < 5, "normalised pre-activations should sit near unity, got %.2f" % norm_z
     assert norm_saturated < 0.35, "normalised layer should stay responsive, got %.3f" % norm_saturated
+
+
+def _reference(net, inputs):
+    """What forward_propagation computes, expressed with the matrix helpers.
+
+    This is the readable definition; forward_propagation is the flattened one
+    that actually runs. They must agree exactly.
+    """
+    values = [row[:] for row in inputs]
+    for layer in net.layers:
+        values = layer.activation(layer.forward(values))
+    return values[0][0], values[1][0]
+
+
+def test_fused_forward_pass_is_bit_exact():
+    """The hot path is hand-fused; it must not drift from the reference.
+
+    Checked over 500 random networks rather than a handful, because the
+    failure this guards against - a slightly different summation order - shows
+    up in the last bit or two and only on some inputs.
+    """
+    mismatches = 0
+    for seed in range(500):
+        random.seed(seed)
+        net = nn.Network()
+        rng = random.Random(seed + 10_000)
+        x = [[rng.uniform(-3, 3)] for _ in range(6)]
+        if nn.forward_propagation(FakeCar(net, [row[:] for row in x])) != _reference(net, x):
+            mismatches += 1
+    assert mismatches == 0, "%d of 500 networks disagreed with the reference" % mismatches
+
+
+def test_fused_forward_pass_is_bit_exact_on_saturating_inputs():
+    """The clamp branch is where a rewrite is most likely to diverge."""
+    extremes = [-1e6, -700.0, -21.0, -20.0, 0.0, 20.0, 21.0, 700.0, 1e6]
+    for seed in range(50):
+        random.seed(seed)
+        net = nn.Network()
+        rng = random.Random(seed)
+        x = [[rng.choice(extremes)] for _ in range(6)]
+        assert nn.forward_propagation(FakeCar(net, [row[:] for row in x])) == _reference(net, x)
+
+
+def test_matrix_helpers_are_still_exercised():
+    """The reference path is kept deliberately; it should not rot unused."""
+    random.seed(1)
+    layer = nn.Layer(6, 12)
+    x = [[0.5]] * 6
+    assert len(layer.activation(layer.forward(x))) == 12

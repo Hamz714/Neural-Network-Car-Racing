@@ -65,13 +65,16 @@ class Car:
         return self.y - self.offset_y
 
     def cache_mask(self):
-        """Build the collision mask once, rather than once per car per frame.
+        """Build the car's collision shape once, not once per frame.
 
-        collide() always built the mask from self.image, the unrotated surface,
-        which never changes after construction - so caching it is exactly
-        equivalent rather than an approximation.
+        collide() always built its mask from self.image, the unrotated surface,
+        which never changes after construction - so caching is exactly
+        equivalent rather than an approximation. The silhouette is the same
+        information as a boolean array, for the grid backend.
         """
         self.mask = pygame.mask.from_surface(self.image)
+        from nncar.sim.occupancy import car_silhouette
+        self.silhouette = car_silhouette(self.image)
 
     def draw(self):
         rotated_image = pygame.transform.rotate(self.image,self.angle)
@@ -96,13 +99,8 @@ class Car:
             self.rotational_velocity = max(self.rotational_velocity,self.velocity/4)
 
     def collide(self):
-        offset = (int(self.world_x-track.x),int(self.world_y-track.y))
-        collision = None
-        border_number = 0
-        while collision == None and border_number < 3:
-            collision = track.mask[border_number].overlap(self.mask,offset)
-            border_number += 1
-        return collision
+        """Truthy when the car is touching a wall."""
+        return track.collides(self)
 
     def wrong_way(self):
         """True when the car is about to cross the finish line backwards."""
@@ -145,7 +143,7 @@ class PlayerCar(Car):
         keys = pygame.key.get_pressed()
         if self.wrong_way():
             self.bounce()
-        elif self.collide() == None:
+        elif not self.collide():
             if self.collision_cooldown:
                 if self.collision_event.check():
                     self.collision_cooldown = False
@@ -209,6 +207,10 @@ class NPC(Car):
     RAY_ANGLES = (-90,-45,0,45,90)
     RAY_LENGTHS = (500,600,700,600,500)
 
+    #: Ray geometry is identical for every car, so it is precomputed once and
+    #: shared. Built lazily so that importing this module stays cheap.
+    RAY_BATCH = None
+
     #: Standard deviation of the noise added to the network's outputs each
     #: frame. It gives the game's opponents some personality; training sets it
     #: to zero so that a network's fitness is a property of the network alone.
@@ -239,9 +241,9 @@ class NPC(Car):
         #: Models predating normalisation are loaded with this False.
         self.normalise_inputs = False
         self.cache_mask()
-        self.sensors = [Sensor(self.x+self.width//2,self.y+self.height//2,
-                               self.angle+offset,length)
-                        for offset,length in zip(NPC.RAY_ANGLES,NPC.RAY_LENGTHS)]
+        if NPC.RAY_BATCH is None:
+            from nncar.sim.raycast import RayBatch
+            NPC.RAY_BATCH = RayBatch(NPC.RAY_ANGLES,NPC.RAY_LENGTHS)
 
     def move(self):
         self.accelerate,self.turn = forward_propagation(self)
@@ -251,7 +253,7 @@ class NPC(Car):
         if self.wrong_way():
             self.bounce()
             self.collisions += 1
-        elif self.collide() == None:
+        elif not self.collide():
             if self.collision_cooldown:
                 if self.collision_event.check():
                     self.collision_cooldown = False
@@ -266,41 +268,116 @@ class NPC(Car):
         self.y -= self.velocity * math.cos(self.angle*math.pi/180)
 
     def update_sensors(self):
-        for sensor in self.sensors:
-            sensor.update(self.velocity,self.angle,self.rotational_velocity,self.turn)
-        self.inputs = [[self.sensors[0].distance()],
-                       [self.sensors[1].distance()],
-                       [self.sensors[2].distance()],
-                       [self.sensors[3].distance()],
-                       [self.sensors[4].distance()],
-                       [self.velocity]]
+        """Read the five range sensors and assemble the network's input vector.
+
+        The rays are recomputed from the car's current position and heading
+        each frame. Previously each Sensor object integrated its own position
+        alongside the car's; that was correct - it applied identical deltas and
+        was measured to stay in exact lockstep, 0.000 px of drift over 600
+        ticks and 66 collisions - but it meant five stateful objects per car
+        where the car's own position already holds the answer. Deriving the
+        origin is simpler, and it is what lets all five rays be cast in one
+        batch.
+
+        Distances are scaled by each ray's maximum range. Fed raw, they reach
+        700 against weights drawn from N(0,1), which drives the first layer's
+        pre-activations to around 10^3; every hidden unit then pins to +/-1 and
+        the layer collapses into a step function that mutation can barely move.
+        """
+        distances = track.raycast(self,NPC.RAY_BATCH)
+
+        if self.normalise_inputs:
+            self.inputs = [[float(distance)/length]
+                           for distance,length in zip(distances,NPC.RAY_LENGTHS)]
+            self.inputs.append([self.velocity/self.max_velocity])
+        else:
+            self.inputs = [[float(distance)] for distance in distances]
+            self.inputs.append([self.velocity])
         
 class Track:
-    def __init__(self,lap_number,load_visuals=True):
+    """The circuit: its backdrop, its walls, and the finish line.
+
+    Walls are held as an occupancy grid rather than as pygame surfaces and
+    masks. The grid answers both the sensor and collision queries, is built
+    once and cached to disk, and lets the three decoded border images - about
+    133 MB - be released immediately.
+
+    backend="mask" restores the original pygame path. It is kept because it is
+    the reference the grid is tested against, and because it is a way back if
+    the grid ever proves wrong.
+    """
+
+    def __init__(self,lap_number,load_visuals=True,backend="grid"):
         self.x = 400
         self.y = -1000
         # The backdrop is 10.7 MB and is only ever blitted, so a headless run
         # has no reason to decode it.
         self.image = pygame.image.load(assets.image("track.png")) if load_visuals else None
-        self.border = [pygame.image.load(path) for path in assets.border_paths()]
-        self.mask = [pygame.mask.from_surface(self.border[0]),pygame.mask.from_surface(self.border[1]),pygame.mask.from_surface(self.border[2])]
+        self.backend = backend
+        self.grid = None
+        self.border = None
+        self.mask = None
+
+        if backend == "grid":
+            from nncar.sim import occupancy
+            self.grid = occupancy.load_grid()
+            self.grid_width,self.grid_height = occupancy.grid_shape(self.grid)
+        else:
+            self.border = [pygame.image.load(path) for path in assets.border_paths()]
+            self.mask = [pygame.mask.from_surface(border) for border in self.border]
+
         self.lap_number = lap_number
         self.leaderboard = []
         self.line_x1,self.line_y1 = 450,665
         self.line_x2,self.line_y2 = 1050,665
 
+    def collides(self,car):
+        """True if the car is overlapping a wall."""
+        offset_x = int(car.world_x - self.x)
+        offset_y = int(car.world_y - self.y)
+        if self.backend == "grid":
+            from nncar.sim.collision import overlaps
+            return overlaps(self.grid,car.silhouette,offset_x,offset_y)
+        offset = (offset_x,offset_y)
+        for mask in self.mask:
+            if mask.overlap(car.mask,offset) is not None:
+                return True
+        return False
+
+    def raycast(self,car,batch):
+        """Distances from the car's centre to the first wall along each ray.
+
+        The rays always use the grid, even on the mask backend - there is no
+        pygame equivalent worth keeping, and the two have been shown to agree.
+        """
+        if self.grid is None:
+            from nncar.sim import occupancy
+            self.grid = occupancy.load_grid()
+        origin_x = car.world_x + car.width//2 - self.x
+        origin_y = car.world_y + car.height//2 - self.y
+        return batch.cast(self.grid,origin_x,origin_y,car.angle)
+
     def draw(self):
          w.window.blit(self.image,(self.x+player.offset_x,self.y+player.offset_y))
 
     def get_pixel_alpha(self,x,y):
+        """True if (x,y) lands on a wall. Only available on the mask backend.
+
+        The out-of-range catch is deliberate and load-bearing: rays routinely
+        sample past the edge of the track, and off the map counts as open. It
+        is narrowed to IndexError so that a genuine mistake - asking a
+        grid-backed track for a pixel, say - is not silently answered "no wall".
+        """
+        if self.border is None:
+            raise RuntimeError(
+                "get_pixel_alpha needs the mask backend; this track is grid-backed. "
+                "Use Track.raycast(), or construct Track(..., backend='mask').")
         try:
             for border in self.border:
-                pixel_colour = border.get_at((int(x),int(y)))
-                alpha_value = pixel_colour[3]
-                if alpha_value != 0:
+                if border.get_at((int(x),int(y)))[3] != 0:
                     return True
             return False
-        except:
+        except IndexError:
             return False
 
 class Sensor:

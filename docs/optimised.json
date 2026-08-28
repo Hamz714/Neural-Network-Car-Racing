@@ -1,0 +1,80 @@
+{
+  "label": "optimised",
+  "recorded": "2026-08-28T13:00:01",
+  "method": "perf_counter, gc disabled, one warm-up, minimum of 7 repeats; equivalence asserted before timing",
+  "environment": {
+    "python": "3.12.6",
+    "numpy": "2.5.2",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "cpu_count": 8,
+    "pygame": "2.6.1"
+  },
+  "results": {
+    "forward_pass": {
+      "us_min": 35.548,
+      "us_median": 41.705,
+      "us_stdev": 2.676,
+      "iterations": 2000,
+      "repeats": 7
+    },
+    "raycast_5_rays": {
+      "equivalence": {
+        "rays_compared": 2000,
+        "agree_within_1e-9": 1998,
+        "agree_fraction": 0.999,
+        "disagree_by_more_than_one_step": 0,
+        "note": "residual disagreement is one 5-px step, where a sample lands within a rounding error of a pixel boundary"
+      },
+      "regimes": {
+        "short (<150px)": {
+          "skipped": "only 5 poses sampled"
+        },
+        "medium (150-450px)": {
+          "poses": 310,
+          "march_5px": {
+            "us_min": 788.975,
+            "us_median": 818.654,
+            "us_stdev": 37.478,
+            "iterations": 150,
+            "repeats": 7
+          },
+          "vectorised": {
+            "us_min": 37.969,
+            "us_median": 39.819,
+            "us_stdev": 1.242,
+            "iterations": 150,
+            "repeats": 7
+          },
+          "speedup": 20.78
+        },
+        "open (>450px)": {
+          "poses": 85,
+          "march_5px": {
+            "us_min": 988.622,
+            "us_median": 1042.454,
+            "us_stdev": 23.194,
+            "iterations": 85,
+            "repeats": 7
+          },
+          "vectorised": {
+            "us_min": 33.688,
+            "us_median": 40.66,
+            "us_stdev": 14.703,
+            "iterations": 85,
+            "repeats": 7
+          },
+          "speedup": 29.35
+        }
+      }
+    },
+    "rollout": {
+      "episodes": 12,
+      "ticks_simulated": 2137,
+      "seconds_min": 0.2552,
+      "ticks_per_second": 8373,
+      "us_per_tick": 119.43,
+      "mean_ticks_per_episode": 178.1
+    }
+  }
+}
