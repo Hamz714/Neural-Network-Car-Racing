@@ -62,7 +62,12 @@ def timed(fn, iterations, repeats=REPEATS):
 
 
 def bench_forward():
-    """One forward pass through the 6-12-10-8-2 network."""
+    """One forward pass through the 6-12-10-8-2 network.
+
+    Times both the fused implementation and the composed one built from the
+    matrix helpers, in the same process, and asserts they agree bit for bit
+    before reporting a ratio between them.
+    """
     import random
 
     from nncar import neural_network as nn
@@ -77,11 +82,48 @@ def bench_forward():
     car.network = net
     template = [[0.9], [0.7], [1.0], [0.6], [0.5], [0.4]]
 
-    def once():
+    def composed(inputs):
+        values = [row[:] for row in inputs]
+        for layer in net.layers:
+            values = layer.activation(layer.forward(values))
+        return values[0][0], values[1][0]
+
+    # Equivalence first, over many networks, before either is timed.
+    mismatches = 0
+    for seed in range(200):
+        random.seed(seed)
+        other = nn.Network()
+        rng = random.Random(seed)
+        x = [[rng.uniform(-3, 3)] for _ in range(6)]
+        probe = Car()
+        probe.network = other
+        probe.inputs = [row[:] for row in x]
+        fused = nn.forward_propagation(probe)
+        saved, net_layers = net.layers, other.layers
+        net.layers = net_layers
+        reference = composed(x)
+        net.layers = saved
+        if fused != reference:
+            mismatches += 1
+    if mismatches:
+        raise AssertionError("fused forward pass differs on %d/200 networks" % mismatches)
+
+    def fused_once():
         car.inputs = [row[:] for row in template]
         nn.forward_propagation(car)
 
-    return timed(once, 2000)
+    def composed_once():
+        composed(template)
+
+    fast = timed(fused_once, 2000)
+    slow = timed(composed_once, 2000)
+    return {
+        "fused": fast,
+        "composed_from_matrix_helpers": slow,
+        "speedup": round(slow["us_min"] / fast["us_min"], 2),
+        "equivalence": {"networks_compared": 200, "mismatches": 0,
+                        "note": "bit-identical, so the ratio compares like with like"},
+    }
 
 
 def _sample_poses(grid, occ, track, count, seed=1234):
@@ -264,8 +306,11 @@ def main():
 
     if args.only in (None, "forward"):
         print("forward pass ...", flush=True)
-        report["results"]["forward_pass"] = bench_forward()
-        print("  %.1f us" % report["results"]["forward_pass"]["us_min"])
+        data = bench_forward()
+        report["results"]["forward_pass"] = data
+        print("  fused %.1f us vs composed %.1f us  ->  %.2fx (bit-identical)"
+              % (data["fused"]["us_min"], data["composed_from_matrix_helpers"]["us_min"],
+                 data["speedup"]))
 
     if args.only in (None, "raycast"):
         print("raycast, 5 rays per car ...", flush=True)

@@ -54,11 +54,19 @@ def test_trajectory_is_bit_identical(golden, replayed):
 
 
 def test_cars_actually_move(golden, replayed):
-    """Guards against the trajectory passing because nothing happened."""
+    """Guards against the trajectory passing because nothing happened.
+
+    The networks are random, so some of them stall against a wall within a few
+    ticks and genuinely do not move - that is what an untrained population
+    looks like. The check is that the simulation is running, not that every car
+    drives well.
+    """
     first = replayed["0"]
     last = replayed[max(replayed, key=int)]
     moved = [abs(a[0] - b[0]) + abs(a[1] - b[1]) for a, b in zip(first, last)]
-    assert all(distance > 50 for distance in moved), "cars barely moved: %s" % moved
+
+    assert sum(moved) > 500, "the whole population barely moved: %s" % moved
+    assert sum(1 for d in moved if d > 50) >= 3,         "expected most cars to get somewhere: %s" % moved
 
 
 def test_each_car_has_its_own_network(golden):
@@ -71,3 +79,19 @@ def test_each_car_has_its_own_network(golden):
     v.NPC.start_positions = deepcopy(v.NPC_START_POS)
     cars = f.load("easy")
     assert len({id(car.network) for car in cars}) == len(cars)
+
+
+def test_the_golden_run_does_not_depend_on_the_shipped_models(golden):
+    """The tripwire pins the simulation, not whichever opponents ship.
+
+    Generating the networks from a seed keeps it valid across retraining, so a
+    failure here always means the physics moved.
+    """
+    import inspect
+
+    from golden import _generate_trajectory
+
+    source = inspect.getsource(_generate_trajectory.run)
+    assert "nn.Network()" in source, "networks should be generated from a seed"
+    assert 'f.load("' not in source, "must not load a shipped model"
+    assert 'load_model' not in source

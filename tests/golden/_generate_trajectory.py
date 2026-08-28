@@ -35,12 +35,20 @@ def state(car):
 
 
 def run(ticks=TICKS):
+    """Five seeded networks driving for `ticks` frames.
+
+    The networks are generated from SEED rather than loaded from models/, so
+    this pins the *simulation* and stays valid when the shipped opponents are
+    retrained. Anything that changes physics, sensing or collision still shows
+    up here immediately.
+    """
     from copy import deepcopy
 
     import pygame
 
     from nncar import entities as v
     from nncar import game as f
+    from nncar import neural_network as nn
 
     pygame.init()
     random.seed(SEED)
@@ -49,7 +57,9 @@ def run(ticks=TICKS):
     v.player = v.PlayerCar()
     v.track = v.Track(1, load_visuals=False)
     v.NPC.start_positions = deepcopy(v.NPC_START_POS)
-    v.NPC_cars = f.load("easy")
+    v.NPC_cars = [v.NPC(v.CARS[index][0], 0, nn.Network()) for index in range(5)]
+    for car in v.NPC_cars:
+        car.normalise_inputs = True
     v.track.leaderboard = v.NPC_cars + [v.player]
 
     rows = {}

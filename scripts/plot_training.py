@@ -138,15 +138,20 @@ def plot(rows, out_path, title=None):
     ax = axes[1][0]
     ax.plot(generations, column(rows, "gates_mean"), color=ORANGE, linewidth=2, zorder=2)
     ax.plot(generations, column(rows, "gates_best"), color=BLUE, linewidth=2, zorder=3)
-    ax.axhline(10, color=INK_MUTED, linewidth=1, linestyle=":", zorder=1)
-    ax.annotate("one full lap", xy=(generations[0], 10), xytext=(10, 5),
+    # A lap is the eight-gate outer circuit; the remaining two checkpoints sit
+    # on an inner section the outer ring does not pass. See scripts/plot_track.py.
+    ax.axhline(8, color=INK_MUTED, linewidth=1, linestyle=":", zorder=1)
+    ax.annotate("a full circuit (8 of 10)", xy=(generations[0], 8), xytext=(10, 5),
                 textcoords="offset points", color=INK_SECONDARY, fontsize=8.5)
+    ax.set_ylim(0, 10.5)
     style_axes(ax, "Checkpoints cleared", "checkpoints")
 
-    # --- lap time -----------------------------------------------------------
-    # Per generation this is noisy - a generation with no fast lap simply has no
-    # entry - so the record so far is drawn as the headline and the
-    # per-generation figure sits behind it as context.
+    # --- time to complete a lap ---------------------------------------------
+    # This is measured from the spawn point, so it includes the partial circuit
+    # a car drives before it first reaches the finish line - it is "how long to
+    # get round", not a flying lap time. Per generation it is noisy (a
+    # generation with no finisher has no entry at all), so the record so far is
+    # the headline and the per-generation figure sits behind it as context.
     ax = axes[1][1]
     seconds = column(rows, "best_lap_seconds", float, default=None)
     xs = [g for g, value in zip(generations, seconds) if value is not None]
@@ -157,9 +162,9 @@ def plot(rows, out_path, title=None):
         ax.plot(xs, record, color=BLUE, linewidth=2, zorder=3)
         ax.set_ylim(0, max(ys) * 1.15)
         label_last(ax, xs, record, "%.1fs" % record[-1], BLUE)
-        style_axes(ax, "Lap time", "seconds (simulated)")
+        style_axes(ax, "Time to complete a lap", "seconds (simulated)")
     else:
-        style_axes(ax, "Lap time", "seconds (simulated)")
+        style_axes(ax, "Time to complete a lap", "seconds (simulated)")
         ax.text(0.5, 0.5, "no lap completed in this run", transform=ax.transAxes,
                 ha="center", va="center", color=INK_MUTED, fontsize=10)
 

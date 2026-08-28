@@ -21,6 +21,7 @@ INK_SECONDARY = "#52514e"
 BLUE = "#2a78d6"
 ORANGE = "#eb6834"
 GREEN = "#1baf7a"
+RED = "#e34948"
 
 
 def load_network(path):
@@ -43,19 +44,31 @@ def trace(network, start_index, ticks):
     sim_clock.set_clock(sim_clock.TickClock(cfg.fps))
 
     car = make_car(network, v.NPC_START_POS[start_index], cfg)
-    for index, checkpoint in enumerate(car.checkpoints):
-        checkpoint.index = index
 
-    outstanding = {c.index for c in car.checkpoints}
+    def tag():
+        """Label each checkpoint with its position in CHECKPOINT_GATES.
+
+        Completing a lap replaces the list with a fresh set of untagged
+        Checkpoints, so this has to be redone every time that happens - without
+        it the tags vanish and every remaining gate reads as cleared.
+        """
+        for index, checkpoint in enumerate(car.checkpoints):
+            checkpoint.index = index
+        return {c.index for c in car.checkpoints}
+
+    outstanding = tag()
     cleared = set()
     path = []
 
     for _ in range(ticks):
         car.update_sensors()
         car.move()
+        laps_before = car.laps
         car.reset_checkpoints()
+        if car.laps > laps_before:
+            outstanding = tag()
         car.check_checkpoints()
-        still = {c.index for c in car.checkpoints if hasattr(c, "index")}
+        still = {c.index for c in car.checkpoints}
         cleared |= outstanding - still
         outstanding = still
         path.append((car.world_x - track.x, car.world_y - track.y))
@@ -68,6 +81,7 @@ def plot(model_path, out_path, start_index=0, ticks=2400):
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
 
     from nncar import entities as v
     from nncar.sim import occupancy as occ
@@ -95,21 +109,35 @@ def plot(model_path, out_path, start_index=0, ticks=2400):
         gx1, gy1 = x1 - track.x, y1 - track.y
         gx2, gy2 = x2 - track.x, y2 - track.y
         reached = index in cleared if path else True
-        colour = ORANGE if reached else "#e34948"
-        ax.plot([gx1, gx2], [gy1, gy2], color=colour, linewidth=3, zorder=2)
+        # Never colour alone: a missed gate is also dashed and its label hollow.
+        colour = ORANGE if reached else RED
+        ax.plot([gx1, gx2], [gy1, gy2], color=colour, linewidth=3, zorder=2,
+                linestyle="-" if reached else (0, (3, 2.5)))
         ax.annotate(str(index), ((gx1 + gx2) / 2, (gy1 + gy2) / 2),
-                    color=colour, fontsize=13, fontweight="bold",
+                    color=SURFACE if reached else RED,
+                    fontsize=13, fontweight="bold",
                     ha="center", va="center", zorder=5,
-                    bbox=dict(boxstyle="circle,pad=0.22", fc=SURFACE, ec=colour, lw=1.6))
+                    bbox=dict(boxstyle="circle,pad=0.22",
+                              fc=colour if reached else SURFACE,
+                              ec=colour, lw=2.0))
 
     missed = sorted(set(range(len(v.CHECKPOINT_GATES))) - cleared) if path else []
     ax.set_title("The circuit, its ten checkpoints, and the evolved route",
                  color=INK, fontsize=14, fontweight="bold", loc="left", pad=14)
     if path:
-        note = ("blue: the trained network's path   -   "
-                "red gates never reached: %s" % (missed or "none"))
-        ax.text(0, -0.035, note, transform=ax.transAxes, color=INK_SECONDARY,
-                fontsize=10, va="top")
+        handles = [
+            Line2D([], [], color=BLUE, lw=2, label="the trained network's path"),
+            Line2D([], [], color=ORANGE, lw=3, label="checkpoint cleared"),
+            Line2D([], [], color=RED, lw=3, linestyle=(0, (3, 2.5)),
+                   label="never reached (gates %s, on the inner loop)"
+                         % ", ".join(str(m) for m in missed) if missed
+                         else "never reached"),
+        ]
+        legend = ax.legend(handles=handles, loc="upper left",
+                           bbox_to_anchor=(0.0, -0.01), ncol=3, frameon=False,
+                           fontsize=9.5, handlelength=2.2)
+        for text in legend.get_texts():
+            text.set_color(INK_SECONDARY)
 
     ax.axis("off")
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)

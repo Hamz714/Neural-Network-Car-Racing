@@ -26,6 +26,10 @@ like. The README states conclusions; this is the working.
 Machine: Intel i7-1165G7, 4 physical cores / 8 threads, Windows 11,
 Python 3.12.6, numpy 2.5.2, pygame 2.6.1. No display (SDL dummy driver).
 
+It is a thin laptop and it throttles, so figures move by 10–20% between runs.
+Ratios measured within a single process are stable; absolute microsecond counts
+are not, and should be read as the scale rather than the value.
+
 Ray cost depends entirely on how far a ray travels before it hits something, so
 results are bucketed by regime rather than averaged into one figure that would
 hide where the benefit is.
@@ -38,8 +42,8 @@ hide where the benefit is.
 
 | Regime | 5-px march (pygame) | Vectorised (grid) | Factor |
 |---|---|---|---|
-| Corridors, 150–450 px | 789 µs | 38.0 µs | **20.8×** |
-| Open space, > 450 px | 989 µs | 33.7 µs | **29.4×** |
+| Corridors, 150–450 px | 821 µs | 38.4 µs | **21.4×** |
+| Open space, > 450 px | 1111 µs | 35.3 µs | **31.5×** |
 
 The vectorised cost is essentially **flat** — 34–38 µs regardless of distance —
 while the original scaled with it. That flatness matters more than the factor:
@@ -51,8 +55,13 @@ also the most common one during early training.
 
 | | µs | Factor |
 |---|---|---|
-| Composed from the matrix helpers | 68.4 | — |
-| Hand-fused, still pure Python | 35.5 | **1.93×** |
+| Composed from the matrix helpers | 75.0 | — |
+| Hand-fused, still pure Python | 35.6 | **2.11×** |
+
+Both are timed in the same process, and the benchmark refuses to report the
+ratio until it has confirmed the two are bit-identical across 200 networks.
+Across repeated runs on this machine the ratio lands between 1.7× and 2.1×;
+it is a laptop, and it throttles.
 
 Three things account for it: the input is known to be a column vector, so the
 generic matrix code's innermost loop over columns always ran over one element;
@@ -70,10 +79,12 @@ Identical was the requirement.
 | | Ticks/sec | µs/tick |
 |---|---|---|
 | Before | 1,030 | 970 |
-| After | 8,373 | 119 |
+| After | 8,325 | 120 |
 
-**8.1×**, measured directly rather than by multiplying the component factors
-together.
+**8.1×** in a single process, measured directly rather than by multiplying the
+component factors together. Across eight workers the trainer sustains around
+23,000 ticks per second, which is what the 200-generation run in `results/`
+actually ran at.
 
 ### Parallel scaling
 
@@ -179,33 +190,61 @@ have" into open space. Narrowed to `IndexError`.
 
 ---
 
-## The reward exploit
+## Two reward hacks
 
-The most interesting thing in the project, and the reason fitness is measured
-in checkpoints rather than laps.
+The most interesting part of the project, and the reason fitness looks the way
+it does.
+
+### Free laps
 
 `Car.reset_checkpoints` increments the lap counter whenever a car is just north
 of the finish line and moving north. All five spawn points are north of that
-line. So a network that reverses roughly 120 px and drives forward again banks
-a lap in about **30 ticks**, having passed **zero** checkpoints — and can
-repeat it indefinitely. The same crossing also resets the collision count,
-which would have laundered the crash penalty too.
+line. So a network that reverses roughly 120 px and drives forward again banks a
+lap in about **30 ticks**, having passed **zero** checkpoints — and can repeat
+it indefinitely. The same crossing also resets the collision count, which would
+have laundered the crash penalty too.
 
 Any fitness of the form `laps * w + checkpoints` is therefore trivially farmed,
 and a search will find it: it is a far shorter path to a high score than
 learning to steer. Rather than change the game's lap detection, the rollout
-banks each lap's checkpoint count as it happens, fitness counts checkpoints,
-and a lap only counts once it has cleared eight of the ten.
-
-The guard is visible in the training log. Champions frequently show 16
-checkpoints for one completed lap: a first pass that clipped a corner and
-cleared only six gates did not count, so the car had to go round again
-properly.
+banks each lap's checkpoint count as it happens, fitness counts checkpoints, and
+a lap only counts once it has cleared enough of them.
 
 `tests/test_fitness.py::test_the_free_lap_exploit_scores_nothing` pins it at
 zero.
 
----
+### Going round twice badly
+
+This one only became visible after a full 200-generation run.
+
+Progress was originally the **total** checkpoints cleared across every circuit a
+car attempted. That sounds like "how far did it get" and is not. A driver
+clearing eight checkpoints on each of two circuits banks sixteen; one that
+clears ten in a single clean lap banks ten. So the first scored higher, and the
+search learned exactly that — the champion came back with `lap_gates` of
+`(7, 8)`, having never cleared more than eight in a row. It was not driving
+badly by accident; it had found that circling was worth more than improving.
+
+Fitness now scores the **best single circuit**. Eight is worth less than ten
+however many times it is repeated, and lapping again only costs time. Under the
+corrected rules that old champion scores 797 instead of 2229.
+
+`tests/test_fitness.py::test_going_round_twice_badly_loses_to_once_well` is the
+regression test.
+
+### And one thing that only looked like a hack
+
+Requiring all ten checkpoints then stalled the search at eight for thirty
+generations, which looked like a third exploit. Plotting the route showed it was
+not. The track is a **double loop**: two checkpoints sit on an inner section and
+the other eight lie on the outer ring, so driving the outer ring is a complete
+closed lap that simply is not the route the checkpoint list describes.
+
+"Clears 8 of 10" is what driving the shortest closed circuit correctly looks
+like. The threshold went back to eight, with the reason recorded where the
+constant lives, and a network that does find the inner section still scores
+higher for it. `scripts/plot_track.py` draws the map that settled this — it is
+the figure that corrected my own reading of the results.
 
 ## Why the inputs are scaled
 
