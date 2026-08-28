@@ -144,20 +144,9 @@ def forward_propagation(car):
 
     return values[0],values[1]
 
-def best_networks(NPC_cars):
-    NPC_cars.sort(reverse=True, key=lambda car : car.score)
-    NPC_cars = NPC_cars[:number_of_cars//10]
-    return NPC_cars
-
-def mutation(NPC_cars,NPC):
-    new_NPC_cars = []
-    for car in NPC_cars:
-        network = deepcopy(car.network)
-        new_NPC_cars.append(NPC(deepcopy(car.start_x),deepcopy(car.start_y),deepcopy(network)))
-        for i in range(9):
-            network = deepcopy(deepcopy(car.network).mutate())
-            new_NPC_cars.append(NPC(deepcopy(car.start_x),deepcopy(car.start_y),deepcopy(network)))
-    return new_NPC_cars
-                
+#: Default mutation step size, used when no sigma is supplied. The trainer
+#: overrides it with a schedule; see nncar.ga.population.sigma_for.
 mutation_rate = 0.05
+
+#: Opponents in a race.
 number_of_cars = 5

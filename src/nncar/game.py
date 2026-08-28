@@ -61,27 +61,6 @@ def finish_race():
     if v.player.laps == v.track.lap_number:
         return True
 
-# def improve_networks():
-#     if v.end_generation.check():
-#         store()
-#         print(v.generation)
-#         v.generation += 1
-#         reset()
-#         v.NPC_cars = n.best_networks(v.NPC_cars)
-#         v.NPC_cars = n.mutation(v.NPC_cars,v.NPC)
-
-# def reset():
-#     v.player = v.PlayerCar()
-#     v.track = v.Track()
-
-# def store():
-#     file_name = "generation" + str(v.generation) + ".txt"
-#     file = open(file_name,"wb")
-#     networks = []
-#     for car in v.NPC_cars:
-#         networks.append(car.network)
-#     pickle.dump(networks,file)
-
 def load_model(difficulty):
     """Read a saved model, returning (networks, normalise_inputs).
 
