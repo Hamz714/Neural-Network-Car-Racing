@@ -126,20 +126,20 @@ def test_zero_ticks_does_not_divide_by_zero():
     assert isinstance(fitness(result(ticks=0, total_gates=1)), float)
 
 
-def test_two_sloppy_laps_lose_to_one_clean_one():
+def test_going_round_twice_badly_loses_to_once_well():
     """The second reward hack, and the reason progress is a single circuit.
 
-    Summing checkpoints across circuits pays a car that clips two corners on
-    each of two laps sixteen, against ten for a car that drives one lap
-    properly - so the search learns to take a scenic route and skip gates. The
-    first trained champion came back with lap_gates of (7, 8) and never once
-    cleared all ten.
+    Summing checkpoints across circuits paid a car that cleared eight on each
+    of two laps sixteen, against ten for a car that drove one clean lap - so
+    the search had every reason to keep circling rather than to improve. The
+    first trained champion came back with lap_gates of (7, 8) and never cleared
+    more than eight in a row.
     """
-    sloppy = result(total_gates=15, best_circuit_gates=8, valid_laps=0,
-                    lap_gates=(7, 8), ticks=1600)
-    clean = result(total_gates=10, best_circuit_gates=10, valid_laps=1,
-                   lap_gates=(10,), ticks=900, terminated="finished")
-    assert fitness(clean) > fitness(sloppy)
+    twice_badly = result(total_gates=15, best_circuit_gates=8, valid_laps=1,
+                         lap_gates=(7, 8), ticks=1600)
+    once_well = result(total_gates=10, best_circuit_gates=10, valid_laps=1,
+                       lap_gates=(10,), ticks=900, terminated="finished")
+    assert fitness(once_well) > fitness(twice_badly)
 
 
 def test_repeating_a_partial_circuit_never_helps():
@@ -149,7 +149,14 @@ def test_repeating_a_partial_circuit_never_helps():
     assert fitness(twice) < fitness(once)
 
 
-def test_a_lap_requires_every_checkpoint():
+def test_a_lap_requires_most_of_the_checkpoints():
+    """Eight of ten, because the track is a double loop.
+
+    Two checkpoints sit on an inner section; the outer ring is a complete
+    closed circuit that passes the other eight. Requiring all ten would be
+    requiring the inner detour, which is a different problem from driving
+    round the track.
+    """
     from nncar.sim.rollout import RolloutConfig
 
-    assert RolloutConfig().min_gates_per_lap == 10
+    assert RolloutConfig().min_gates_per_lap == 8

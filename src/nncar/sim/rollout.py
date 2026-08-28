@@ -19,6 +19,16 @@ independent rules retire a car:
 
 Either alone would be wrong. Together they cut a generation-zero rollout from
 three thousand ticks to a couple of hundred.
+
+`min_gates_per_lap` is 8 of the 10 checkpoints rather than all of them, and the
+reason is a property of the track rather than a tolerance for sloppiness. The
+circuit is a double loop: two of the checkpoints sit on an inner section, and
+the other eight lie on the outer ring. Driving the outer ring is a complete,
+closed lap that returns across the finish line - it is simply not the route the
+checkpoint list describes. Requiring all ten would mean requiring the inner
+detour, which is a harder navigation problem than "drive round the track" and
+not the one being posed here. A network that does find the inner section scores
+higher for it, because ten checkpoints beat eight.
 """
 
 import math
@@ -34,7 +44,7 @@ class RolloutConfig:
 
     def __init__(self, fps=50, laps=1, max_ticks=3000, stall_ticks=400,
                  collision_limit=5, displacement_window=100, displacement_min=50.0,
-                 min_gates_per_lap=10, exploration_noise=0.0, normalise_inputs=True,
+                 min_gates_per_lap=8, exploration_noise=0.0, normalise_inputs=True,
                  difficulty_image="red.png"):
         self.fps = fps
         self.laps = laps

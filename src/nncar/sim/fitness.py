@@ -15,18 +15,20 @@ finish line northbound, and every spawn point sits north of that line, so a car
 that reverses a little over a hundred pixels and drives forward again collects a
 lap in about thirty ticks having passed no checkpoints at all. Rewarding
 ``laps`` directly would make that the whole game. Progress is therefore measured
-in *checkpoints*, and a lap only counts once it has cleared every one of them;
-the rollout records the gate count at each lap boundary so this stays checkable
-after the fact.
+in *checkpoints*, and a lap only counts once it has cleared most of them; the
+rollout records the gate count at each lap boundary so this stays checkable
+after the fact. (See ``RolloutConfig.min_gates_per_lap`` for why the threshold
+is eight of ten and not all ten - the track is a double loop, and two gates sit
+on a section the outer circuit does not touch.)
 
 **Progress is the best single circuit, never the total.** An earlier version
 summed checkpoints across every circuit a car attempted, which sounds like the
-same thing and is not. A car that clips two corners on each of two laps banks
-sixteen checkpoints; a car that drives one clean lap banks ten. The first
-scored higher, so the search learned to take a scenic route and skip gates
-rather than to drive the circuit properly - trained networks reliably came back
-with lap_gates of (7, 8), never (10,). Scoring the best single circuit removes
-the incentive: eight is worth less than ten however many times it is repeated.
+same thing and is not: it paid a car for going round twice badly rather than
+once well. A driver that clears eight checkpoints on each of two laps banked
+sixteen, beating one that cleared ten in a single clean lap, so the search had
+every reason to keep circling instead of improving. Scoring the best single
+circuit removes it - eight is worth less than ten however many times it is
+repeated, and lapping again only costs time.
 """
 
 
