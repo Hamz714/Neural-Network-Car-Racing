@@ -24,10 +24,12 @@ list, no notion of a racing line — everything it knows about the circuit it ha
 to infer from six numbers, fifty times a second.
 
 ```
-                        ┌──────────────────────────────────────┐
-   5 range sensors ────►│  6 → 12 → 10 → 8 → 2                 │───► accelerate
-   current speed  ────►│  fully connected, tanh, 320 weights   │───► steer
-                        └──────────────────────────────────────┘
+                       ┌───────────────────────────────────────┐
+  5 range sensors ────►│                                       │────► accelerate
+                       │   6 → 12 → 10 → 8 → 2                 │
+                       │   fully connected, tanh, 320 weights  │
+  current speed   ────►│                                       │────► steer
+                       └───────────────────────────────────────┘
 ```
 
 ---
