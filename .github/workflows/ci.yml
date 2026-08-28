@@ -1,0 +1,65 @@
+name: tests
+
+on:
+  push:
+    branches: [main, cv-polish]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    env:
+      # pygame needs a video and audio driver even when nothing is displayed.
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      NNCAR_HEADLESS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Cache the track occupancy grid
+        # Built from the border PNGs on a miss; deterministic, and keyed on
+        # their contents so it can never go stale.
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: occupancy-${{ hashFiles('assets/images/trackborder*.png') }}
+
+      - name: Run tests
+        run: pytest -q --cov=src/nncar --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  purity:
+    # The project's headline claim is that the neural network is written from
+    # scratch. This job fails the build if anything outside the standard
+    # library is ever imported into it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: pytest tests/test_purity.py -v
