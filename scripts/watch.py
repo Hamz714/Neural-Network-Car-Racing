@@ -1,14 +1,20 @@
-"""Watch a trained network drive, on screen.
+"""Watch a trained network drive - on screen, or straight to a GIF.
 
     python scripts/watch.py --model models/hard.pkl
     python scripts/watch.py --run runs/main --generation 6
+    python scripts/watch.py --model models/hard.pkl --record results/demo.gif
 
 This is the debugging tool that keeps the trainer honest: it replays through
 the same rollout the trainer scores with, so if a network looks nothing like
 its fitness suggests, the two have diverged and one of them is wrong.
 
-It is also what the README's demo is recorded from. Press Esc or close the
-window to stop.
+With --record it also produces the README's demo. Recording renders the frames
+rather than capturing the screen, which means no window borders or cursor in
+the picture, no manual trimming, identical output on any machine, and anyone
+who clones the repo can regenerate it with one command. It runs headless and as
+fast as it can, so a fifteen-second clip takes a couple of seconds to make.
+
+Press Esc or close the window to stop an on-screen run.
 """
 
 import argparse
@@ -26,6 +32,59 @@ def load_networks(path):
         networks = payload.get("networks") or [payload["network"]]
         return networks, payload.get("normalise_inputs", True), payload.get("meta", {})
     return [payload], False, {}
+
+
+def capture(pygame, surface, size):
+    """One frame as a PIL image, taken from the render surface.
+
+    Reading the surface rather than the screen is what keeps window borders,
+    the cursor and the desktop out of the picture.
+    """
+    from PIL import Image
+
+    raw = pygame.image.tostring(surface, "RGB")
+    image = Image.frombytes("RGB", surface.get_size(), raw)
+    return image.resize(size, Image.LANCZOS)
+
+
+def write_gif(frames, path, every, fps, colours, dither=False):
+    """Assemble frames into an optimised, looping GIF.
+
+    Two choices keep the file small enough to sit in a README.
+
+    All frames share one palette, built from a frame in the middle of the clip.
+    Per-frame palettes look marginally better and roughly double the size.
+
+    Dithering is off by default. It is the single biggest cost here: the art is
+    flat-coloured, so dithering replaces large uniform areas with pixel noise
+    that GIF's run-length compression cannot pack - on this clip it tripled the
+    file for no visible benefit. --record-dither turns it back on.
+
+    The camera follows the car, so every pixel changes every frame and
+    inter-frame compression cannot help. That is why resolution and frame count
+    matter more here than they would for a static shot.
+    """
+    if not frames:
+        raise SystemExit("no frames captured")
+
+    from PIL import Image
+
+    palette = frames[len(frames) // 2].quantize(colors=colours, method=Image.MEDIANCUT)
+    mode = Image.FLOYDSTEINBERG if dither else Image.NONE
+    quantised = [frame.quantize(palette=palette, dither=mode) for frame in frames]
+
+    duration = int(round(1000.0 * every / fps))
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    quantised[0].save(path, save_all=True, append_images=quantised[1:],
+                      duration=duration, loop=0, optimize=True, disposal=2)
+
+    size_mb = os.path.getsize(path) / 1e6
+    print("wrote %s - %d frames at %dx%d, %d ms each (%.1f fps), %.2f MB"
+          % (path, len(quantised), quantised[0].width, quantised[0].height,
+             duration, 1000.0 / duration, size_mb))
+    if size_mb > 10:
+        print("  warning: GitHub will not render a GIF this large inline; "
+              "reduce --record-scale, --record-seconds or --record-colours")
 
 
 def resolve(args):
@@ -50,7 +109,31 @@ def main():
                         help="0 runs as fast as it can")
     parser.add_argument("--follow", action="store_true", default=True,
                         help="keep the camera on the car (default)")
+
+    record = parser.add_argument_group("recording")
+    record.add_argument("--record", metavar="PATH.gif",
+                        help="render to a GIF instead of watching; implies headless")
+    record.add_argument("--record-every", type=int, default=7,
+                        help="keep every Nth simulated frame (7 -> ~7 fps)")
+    record.add_argument("--record-scale", type=float, default=0.34,
+                        help="scale factor applied to the 1400x750 frame")
+    record.add_argument("--record-seconds", type=float, default=17.0,
+                        help="stop after this many simulated seconds")
+    record.add_argument("--record-colours", type=int, default=48,
+                        help="GIF palette size; fewer colours means a smaller file")
+    record.add_argument("--record-dither", action="store_true",
+                        help="dither the palette; looks smoother, roughly triples the file")
+    record.add_argument("--record-view", type=float, default=1.5,
+                        help="how much more of the track to show than the game "
+                             "window does; 1.0 matches the game exactly")
     args = parser.parse_args()
+
+    if args.record:
+        # Must precede the pygame import, and there is no window to show.
+        from nncar.sim import headless
+
+        headless.enable()
+        args.fps = 0
 
     path = resolve(args)
     if not os.path.exists(path):
@@ -90,7 +173,32 @@ def main():
     font = pygame.font.Font(None, 40)
     ticker = pygame.time.Clock()
 
+    frames = []
+    frame_size = None
+    if args.record:
+        # Draw onto a surface larger than the game window and shrink it down.
+        # At 1:1 the camera is so tight that the clip reads as "a car on a
+        # road" rather than "a car driving a circuit"; widening the view is
+        # what makes the corners and the racing line legible.
+        view_width = int(w.window_width * args.record_view)
+        view_height = int(w.window_height * args.record_view)
+        w.window = pygame.Surface((view_width, view_height))
+        w.window_width, w.window_height = view_width, view_height
+
+        frame_size = (int(view_width * args.record_scale / args.record_view),
+                      int(view_height * args.record_scale / args.record_view))
+        # Keep the HUD legible after the downscale.
+        font = pygame.font.Font(None, int(40 * args.record_view))
+
+        cfg = RolloutConfig(laps=args.laps,
+                            max_ticks=int(args.record_seconds * cfg.fps),
+                            exploration_noise=0.0, normalise_inputs=normalise)
+        print("recording %d x %d at %.1fx view, every %d frames, up to %.0f s"
+              % (frame_size[0], frame_size[1], args.record_view,
+                 args.record_every, args.record_seconds))
+
     running = True
+    announced = False
     tick = 0
     while running and tick < cfg.max_ticks:
         for event in pygame.event.get():
@@ -112,26 +220,41 @@ def main():
         v.track.draw()
         car.draw()
 
+        hud_scale = args.record_view if args.record else 1.0
         for index, line in enumerate([
             "lap %d/%d" % (car.laps, cfg.laps),
             "checkpoints %d/10" % car.checkpoints_passed,
             "speed %.1f" % car.velocity,
             "%.1fs" % (tick / float(cfg.fps)),
         ]):
-            w.window.blit(font.render(line, True, (255, 255, 255)), (20, 20 + index * 34))
+            w.window.blit(font.render(line, True, (255, 255, 255)),
+                          (int(20 * hud_scale), int((20 + index * 34) * hud_scale)))
 
-        pygame.display.flip()
+        if args.record:
+            if tick % args.record_every == 0:
+                frames.append(capture(pygame, w.window, frame_size))
+        else:
+            pygame.display.flip()
+
         clock.advance()
         tick += 1
         if args.fps:
             ticker.tick(args.fps)
 
-        if car.laps >= cfg.laps:
+        if car.laps >= cfg.laps and not announced:
+            announced = True
             print("completed %d lap(s) in %.2f simulated seconds"
                   % (car.laps, tick / float(cfg.fps)))
-            break
+            # When recording, keep rolling so the clip does not cut the instant
+            # the line is crossed.
+            if not args.record:
+                break
 
     pygame.quit()
+
+    if args.record:
+        write_gif(frames, args.record, args.record_every, cfg.fps,
+                  args.record_colours, args.record_dither)
 
 
 if __name__ == "__main__":

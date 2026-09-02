@@ -5,9 +5,13 @@ in pure Python — no NumPy, no PyTorch, no machine-learning library of any kind
 and it is trained by a genetic algorithm against a headless simulation of the
 game's own physics.
 
-![Training run](results/curves.png)
+![The trained network driving a lap](results/demo.gif)
 
-<!-- DEMO -->
+*The generation-193 network driving a lap. Rendered straight from the
+simulation by `scripts/watch.py --record`, not screen-captured, so anyone who
+clones this can regenerate it.*
+
+![Training run](results/curves.png)
 
 ---
 
@@ -39,10 +43,11 @@ to infer from six numbers, fifty times a second.
 ```bash
 pip install -r requirements.txt
 
-python main.py                       # play
-python scripts/watch.py --model models/hard.pkl    # watch a trained network drive
+python main.py                                      # play
+python scripts/watch.py --model models/hard.pkl     # watch a trained network drive
+python scripts/watch.py --model models/hard.pkl --record results/demo.gif
 python scripts/train.py --generations 200 --population 100 --workers 8
-pytest                               # 172 tests
+pytest                                              # 172 tests
 ```
 
 Python 3.9 or newer. Only `pygame` and `numpy` are required — and NumPy is used
