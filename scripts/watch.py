@@ -47,7 +47,7 @@ def capture(pygame, surface, size):
     return image.resize(size, Image.LANCZOS)
 
 
-def write_gif(frames, path, every, fps, colours, dither=False):
+def write_gif(frames, path, every, fps, colours, dither=False, hold=0.0):
     """Assemble frames into an optimised, looping GIF.
 
     Two choices keep the file small enough to sit in a README.
@@ -74,14 +74,20 @@ def write_gif(frames, path, every, fps, colours, dither=False):
     quantised = [frame.quantize(palette=palette, dither=mode) for frame in frames]
 
     duration = int(round(1000.0 * every / fps))
+    # A per-frame duration list lets the closing frame linger, so the finished
+    # lap registers before the loop restarts.
+    durations = [duration] * len(quantised)
+    if hold > 0:
+        durations[-1] = max(duration, int(round(hold * 1000)))
+
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     quantised[0].save(path, save_all=True, append_images=quantised[1:],
-                      duration=duration, loop=0, optimize=True, disposal=2)
+                      duration=durations, loop=0, optimize=True, disposal=2)
 
     size_mb = os.path.getsize(path) / 1e6
-    print("wrote %s - %d frames at %dx%d, %d ms each (%.1f fps), %.2f MB"
+    print("wrote %s - %d frames at %dx%d, %d ms each (%.1f fps), %.1f s hold, %.2f MB"
           % (path, len(quantised), quantised[0].width, quantised[0].height,
-             duration, 1000.0 / duration, size_mb))
+             duration, 1000.0 / duration, hold, size_mb))
     if size_mb > 10:
         print("  warning: GitHub will not render a GIF this large inline; "
               "reduce --record-scale, --record-seconds or --record-colours")
@@ -126,6 +132,12 @@ def main():
     record.add_argument("--record-view", type=float, default=1.5,
                         help="how much more of the track to show than the game "
                              "window does; 1.0 matches the game exactly")
+    record.add_argument("--record-hold", type=float, default=1.2,
+                        help="seconds to hold the final frame before looping")
+    record.add_argument("--record-from-lap", type=int, default=1,
+                        help="start capturing after this many finish-line "
+                             "crossings; 1 skips the partial circuit driven "
+                             "from the starting grid, 0 records from the grid")
     args = parser.parse_args()
 
     if args.record:
@@ -190,15 +202,22 @@ def main():
         # Keep the HUD legible after the downscale.
         font = pygame.font.Font(None, int(40 * args.record_view))
 
+        # Budget enough ticks to drive the skipped circuits and then the one
+        # being captured.
+        budget = args.record_seconds * (args.record_from_lap + 1) + 10
         cfg = RolloutConfig(laps=args.laps,
-                            max_ticks=int(args.record_seconds * cfg.fps),
+                            max_ticks=int(budget * cfg.fps),
                             exploration_noise=0.0, normalise_inputs=normalise)
         print("recording %d x %d at %.1fx view, every %d frames, up to %.0f s"
               % (frame_size[0], frame_size[1], args.record_view,
                  args.record_every, args.record_seconds))
+        if args.record_from_lap:
+            print("  skipping %d finish-line crossing(s) first, so the clip is "
+                  "one whole circuit" % args.record_from_lap)
 
     running = True
     announced = False
+    capture_start = None
     tick = 0
     while running and tick < cfg.max_ticks:
         for event in pygame.event.get():
@@ -209,7 +228,15 @@ def main():
 
         car.update_sensors()
         car.move()
+
+        # Crossing the line resets the checkpoint count for the new lap, so
+        # bank the closing figure first: on that frame the interesting number
+        # is what the circuit just completed cleared, not what the next one has
+        # managed in its first tick.
+        gates_completed = car.checkpoints_passed
+        laps_before = car.laps
         car.reset_checkpoints()
+        just_finished = car.laps > laps_before
         car.check_checkpoints()
 
         # Centre the camera on the car.
@@ -220,18 +247,32 @@ def main():
         v.track.draw()
         car.draw()
 
+        # While recording, the clip has its own clock and lap counter so that
+        # skipped warm-up circuits do not appear in the numbers.
+        if args.record:
+            shown_lap = max(0, car.laps - args.record_from_lap)
+            # capture_start is set later in this iteration, so it is None on the
+            # frame that opens the clip - which is exactly 0.0 s.
+            elapsed = 0.0 if capture_start is None else (tick - capture_start) / float(cfg.fps)
+        else:
+            shown_lap = car.laps
+            elapsed = tick / float(cfg.fps)
+
         hud_scale = args.record_view if args.record else 1.0
         for index, line in enumerate([
-            "lap %d/%d" % (car.laps, cfg.laps),
-            "checkpoints %d/10" % car.checkpoints_passed,
+            "lap %d/%d" % (shown_lap, cfg.laps),
+            "checkpoints %d/10" % (gates_completed if just_finished
+                                   else car.checkpoints_passed),
             "speed %.1f" % car.velocity,
-            "%.1fs" % (tick / float(cfg.fps)),
+            "%.1fs" % elapsed,
         ]):
             w.window.blit(font.render(line, True, (255, 255, 255)),
                           (int(20 * hud_scale), int((20 + index * 34) * hud_scale)))
 
         if args.record:
-            if tick % args.record_every == 0:
+            if capture_start is None and car.laps >= args.record_from_lap:
+                capture_start = tick
+            if capture_start is not None and (tick - capture_start) % args.record_every == 0:
                 frames.append(capture(pygame, w.window, frame_size))
         else:
             pygame.display.flip()
@@ -241,20 +282,33 @@ def main():
         if args.fps:
             ticker.tick(args.fps)
 
-        if car.laps >= cfg.laps and not announced:
+        if args.record:
+            # Stop once the circuit being captured is complete. The crossing
+            # seldom falls on the capture cadence, so take the closing frame
+            # regardless - otherwise the clip stops a few frames short and
+            # never shows the completed lap.
+            if capture_start is not None and car.laps > args.record_from_lap:
+                if frames:
+                    frames[-1] = capture(pygame, w.window, frame_size)
+                print("captured one full circuit in %.2f simulated seconds"
+                      % ((tick - capture_start) / float(cfg.fps)))
+                break
+            if (capture_start is not None
+                    and tick - capture_start > args.record_seconds * cfg.fps):
+                print("reached the %.0f s limit before the circuit closed"
+                      % args.record_seconds)
+                break
+        elif car.laps >= cfg.laps and not announced:
             announced = True
             print("completed %d lap(s) in %.2f simulated seconds"
                   % (car.laps, tick / float(cfg.fps)))
-            # When recording, keep rolling so the clip does not cut the instant
-            # the line is crossed.
-            if not args.record:
-                break
+            break
 
     pygame.quit()
 
     if args.record:
         write_gif(frames, args.record, args.record_every, cfg.fps,
-                  args.record_colours, args.record_dither)
+                  args.record_colours, args.record_dither, args.record_hold)
 
 
 if __name__ == "__main__":

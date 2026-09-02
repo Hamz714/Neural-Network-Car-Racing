@@ -7,9 +7,12 @@ game's own physics.
 
 ![The trained network driving a lap](results/demo.gif)
 
-*The generation-193 network driving a lap. Rendered straight from the
-simulation by `scripts/watch.py --record`, not screen-captured, so anyone who
-clones this can regenerate it.*
+*One full lap by the generation-193 network, in 15.3 simulated seconds. It
+clears 8 of the 10 checkpoints because the track is a double loop and the outer
+circuit does not pass the other two — see [The track is a double
+loop](#the-track-is-a-double-loop). Rendered straight from the simulation by
+`scripts/watch.py --record` rather than screen-captured, so it has no window
+chrome and anyone who clones this can regenerate it.*
 
 ![Training run](results/curves.png)
 
