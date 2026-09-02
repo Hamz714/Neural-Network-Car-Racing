@@ -1,0 +1,43 @@
+{
+  "label": "baseline (pre-optimisation)",
+  "recorded": "2026-08-28T12:41:11",
+  "method": "perf_counter, gc disabled, 1 warm-up, min of 7 repeats",
+  "environment": {
+    "python": "3.12.6",
+    "numpy": "2.5.2",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "cpu_count": 8,
+    "pygame": "2.6.1"
+  },
+  "results": {
+    "forward_pass": {
+      "us_min": 71.823,
+      "us_median": 76.459,
+      "us_stdev": 5.72,
+      "iterations": 2000,
+      "repeats": 7
+    },
+    "raycast_5_rays": {
+      "short": {
+        "skipped": "only 0 poses"
+      },
+      "medium": {
+        "us_min": 888.142,
+        "us_median": 927.992,
+        "us_stdev": 52.967,
+        "iterations": 120,
+        "repeats": 7,
+        "poses": 185
+      },
+      "open": {
+        "us_min": 1118.729,
+        "us_median": 1143.873,
+        "us_stdev": 49.422,
+        "iterations": 55,
+        "repeats": 7,
+        "poses": 55
+      }
+    }
+  }
+}

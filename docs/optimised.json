@@ -1,0 +1,95 @@
+{
+  "label": "optimised",
+  "recorded": "2026-08-28T14:26:42",
+  "method": "perf_counter, gc disabled, one warm-up, minimum of 7 repeats; equivalence asserted before timing",
+  "environment": {
+    "python": "3.12.6",
+    "numpy": "2.5.2",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "cpu_count": 8,
+    "pygame": "2.6.1"
+  },
+  "results": {
+    "forward_pass": {
+      "fused": {
+        "us_min": 35.574,
+        "us_median": 46.063,
+        "us_stdev": 4.495,
+        "iterations": 2000,
+        "repeats": 7
+      },
+      "composed_from_matrix_helpers": {
+        "us_min": 75.001,
+        "us_median": 78.002,
+        "us_stdev": 3.669,
+        "iterations": 2000,
+        "repeats": 7
+      },
+      "speedup": 2.11,
+      "equivalence": {
+        "networks_compared": 200,
+        "mismatches": 0,
+        "note": "bit-identical, so the ratio compares like with like"
+      }
+    },
+    "raycast_5_rays": {
+      "equivalence": {
+        "rays_compared": 2000,
+        "agree_within_1e-9": 1998,
+        "agree_fraction": 0.999,
+        "disagree_by_more_than_one_step": 0,
+        "note": "residual disagreement is one 5-px step, where a sample lands within a rounding error of a pixel boundary"
+      },
+      "regimes": {
+        "short (<150px)": {
+          "skipped": "only 5 poses sampled"
+        },
+        "medium (150-450px)": {
+          "poses": 310,
+          "march_5px": {
+            "us_min": 821.161,
+            "us_median": 846.552,
+            "us_stdev": 26.206,
+            "iterations": 150,
+            "repeats": 7
+          },
+          "vectorised": {
+            "us_min": 38.427,
+            "us_median": 46.0,
+            "us_stdev": 9.445,
+            "iterations": 150,
+            "repeats": 7
+          },
+          "speedup": 21.37
+        },
+        "open (>450px)": {
+          "poses": 85,
+          "march_5px": {
+            "us_min": 1111.253,
+            "us_median": 1248.567,
+            "us_stdev": 96.282,
+            "iterations": 85,
+            "repeats": 7
+          },
+          "vectorised": {
+            "us_min": 35.276,
+            "us_median": 38.195,
+            "us_stdev": 2.128,
+            "iterations": 85,
+            "repeats": 7
+          },
+          "speedup": 31.5
+        }
+      }
+    },
+    "rollout": {
+      "episodes": 12,
+      "ticks_simulated": 2137,
+      "seconds_min": 0.2567,
+      "ticks_per_second": 8325,
+      "us_per_tick": 120.12,
+      "mean_ticks_per_episode": 178.1
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "config": {
+    "generations": 200,
+    "population": 100,
+    "elite": 5,
+    "parents": 20,
+    "sigma": 0.15,
+    "sigma_final": 0.02,
+    "sigma_schedule": "exp",
+    "crossover_rate": 0.0,
+    "random_inject": 0.05,
+    "tournament_k": 3,
+    "laps": 1,
+    "fps": 50,
+    "max_ticks": 3000,
+    "stall_ticks": 400,
+    "displacement_window": 100,
+    "displacement_min": 50.0,
+    "collision_limit": 5,
+    "min_gates_per_lap": 8,
+    "start_positions": "0,1",
+    "eval_noise": 0.0,
+    "w_progress": 100.0,
+    "w_speed": 25.0,
+    "w_lap": 250.0,
+    "w_collision": 5.0,
+    "w_finish": 500.0,
+    "seed": 1234,
+    "workers": 8,
+    "out": "runs",
+    "run_name": "main",
+    "log_every": 1,
+    "export": null,
+    "from_run": null,
+    "from_generation": null,
+    "resolved_workers": 8,
+    "rollout": {
+      "fps": 50,
+      "laps": 1,
+      "max_ticks": 3000,
+      "stall_ticks": 400,
+      "collision_limit": 5,
+      "displacement_window": 100,
+      "displacement_min": 50.0,
+      "min_gates_per_lap": 8,
+      "exploration_noise": 0.0,
+      "normalise_inputs": true,
+      "difficulty_image": "red.png"
+    },
+    "ga": {
+      "population": 100,
+      "elite": 5,
+      "parents": 20,
+      "sigma0": 0.15,
+      "sigma1": 0.02,
+      "sigma_schedule": "exp",
+      "crossover_rate": 0.0,
+      "random_inject": 0.05,
+      "tournament_k": 3
+    },
+    "fitness_weights": {
+      "progress": 100.0,
+      "speed": 25.0,
+      "lap": 250.0,
+      "collision": 5.0,
+      "finish": 500.0
+    }
+  },
+  "environment": {
+    "python": "3.12.6",
+    "numpy": "2.5.2",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "cpu_count": 8,
+    "git": {
+      "commit": "c977f2e08b0b56e766dce4d5c86546ec336df3ed",
+      "dirty": true
+    }
+  },
+  "started": "2026-08-28T13:59:55"
+}

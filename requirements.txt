@@ -1,0 +1,9 @@
+# Runtime dependencies.
+#
+# pygame  - rendering, input, audio, and the pixel-perfect collision masks used
+#           by the interactive game.
+# numpy   - simulation layer only (sensor raycasting and the track occupancy
+#           grid). The neural network itself is pure Python by design; see
+#           tests/test_purity.py, which fails the build if that ever changes.
+pygame>=2.5,<3
+numpy>=1.24

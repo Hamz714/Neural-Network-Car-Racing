@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nncar"
+version = "1.0.0"
+description = "Cars that learn to drive a racetrack, using a neural network and a genetic algorithm written from scratch in pure Python."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Hamzah Ibrahim" }]
+keywords = ["neural-network", "genetic-algorithm", "pygame", "neuroevolution", "from-scratch"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Games/Entertainment :: Simulation",
+]
+dependencies = ["pygame>=2.5,<3", "numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "matplotlib>=3.7"]
+
+[project.scripts]
+nncar-play = "nncar.screens:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"nncar" = ["../../assets/**/*", "../../models/*.pkl"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/nncar"]
+omit = ["src/nncar/screens.py", "src/nncar/window.py"]
