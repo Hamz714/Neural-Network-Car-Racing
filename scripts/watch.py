@@ -82,7 +82,7 @@ def write_gif(frames, path, every, fps, colours, dither=False, hold=0.0):
 
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     quantised[0].save(path, save_all=True, append_images=quantised[1:],
-                      duration=durations, loop=0, optimize=True, disposal=2)
+                      duration=durations, loop=0, optimize=True, disposal=1)
 
     size_mb = os.path.getsize(path) / 1e6
     print("wrote %s - %d frames at %dx%d, %d ms each (%.1f fps), %.1f s hold, %.2f MB"
@@ -119,13 +119,16 @@ def main():
     record = parser.add_argument_group("recording")
     record.add_argument("--record", metavar="PATH.gif",
                         help="render to a GIF instead of watching; implies headless")
-    record.add_argument("--record-every", type=int, default=7,
-                        help="keep every Nth simulated frame (7 -> ~7 fps)")
-    record.add_argument("--record-scale", type=float, default=0.34,
+    record.add_argument("--record-every", type=int, default=4,
+                        help="keep every Nth simulated frame (4 -> 12.5 fps); the camera "
+                             "tracks a car doing 12 px per tick, so a larger value moves "
+                             "the view several percent of the frame width between frames "
+                             "and reads as judder")
+    record.add_argument("--record-scale", type=float, default=0.28,
                         help="scale factor applied to the 1400x750 frame")
     record.add_argument("--record-seconds", type=float, default=17.0,
                         help="stop after this many simulated seconds")
-    record.add_argument("--record-colours", type=int, default=48,
+    record.add_argument("--record-colours", type=int, default=32,
                         help="GIF palette size; fewer colours means a smaller file")
     record.add_argument("--record-dither", action="store_true",
                         help="dither the palette; looks smoother, roughly triples the file")
@@ -249,6 +252,8 @@ def main():
 
         # While recording, the clip has its own clock and lap counter so that
         # skipped warm-up circuits do not appear in the numbers.
+        closing = just_finished and (not args.record
+                                     or car.laps > args.record_from_lap)
         if args.record:
             shown_lap = max(0, car.laps - args.record_from_lap)
             # capture_start is set later in this iteration, so it is None on the
@@ -261,8 +266,10 @@ def main():
         hud_scale = args.record_view if args.record else 1.0
         for index, line in enumerate([
             "lap %d/%d" % (shown_lap, cfg.laps),
-            "checkpoints %d/10" % (gates_completed if just_finished
-                                   else car.checkpoints_passed),
+            # Freeze the count only on the crossing that ENDS the clip. The
+            # crossing that opens it is also a lap boundary, and there the
+            # interesting number is the new circuit's, not the warm-up's.
+            "checkpoints %d/10" % (gates_completed if closing else car.checkpoints_passed),
             "speed %.1f" % car.velocity,
             "%.1fs" % elapsed,
         ]):
