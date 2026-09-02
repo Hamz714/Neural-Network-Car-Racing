@@ -119,11 +119,12 @@ def main():
     record = parser.add_argument_group("recording")
     record.add_argument("--record", metavar="PATH.gif",
                         help="render to a GIF instead of watching; implies headless")
-    record.add_argument("--record-every", type=int, default=4,
-                        help="keep every Nth simulated frame (4 -> 12.5 fps); the camera "
+    record.add_argument("--record-every", type=int, default=3,
+                        help="keep every Nth simulated frame (3 -> 16.7 fps); the camera "
                              "tracks a car doing 12 px per tick, so a larger value moves "
                              "the view several percent of the frame width between frames "
-                             "and reads as judder")
+                             "and reads as judder. 2 gives 25 fps but pushes the file "
+                             "past the ~10 MB GitHub renders inline")
     record.add_argument("--record-scale", type=float, default=0.28,
                         help="scale factor applied to the 1400x750 frame")
     record.add_argument("--record-seconds", type=float, default=17.0,
